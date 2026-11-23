@@ -5,9 +5,10 @@ import software.bernie.geckolib.cache.object.GeoBone;
 
 @FunctionalInterface
 public interface BoneRenderPlan {
-    BoneRenderPlan FULL = bone -> BoneVisit.RENDER;
+   BoneRenderPlan FULL = bone -> BoneVisit.RENDER;
 
-    default void prepare(BakedGeoModel model, boolean hasPerBoneLayers) {}
+   default void prepare(BakedGeoModel model, boolean hasPerBoneLayers) {
+   }
 
-    BoneVisit classify(GeoBone bone);
+   BoneVisit classify(GeoBone var1);
 }

@@ -1,12 +1,11 @@
 package com.moepus.gbf;
 
-import net.minecraftforge.fml.common.Mod;
+import net.fabricmc.api.ModInitializer;
 
-@Mod(Gbf.MODID)
-public class Gbf {
+public class Gbf implements ModInitializer {
+	public static final String MODID = "gbf";
 
-    public static final String MODID = "gbf";
-
-    public Gbf() {
-    }
+	@Override
+	public void onInitialize() {
+	}
 }

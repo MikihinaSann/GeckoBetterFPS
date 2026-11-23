@@ -6,34 +6,30 @@ import com.moepus.gbf.molang.compiler.node.CachedAstNode;
 import com.moepus.gbf.molang.compiler.node.ConstantAstNode;
 
 public final class StrengthReduction {
-    private StrengthReduction() {
-    }
+   private StrengthReduction() {
+   }
 
-    public static AstNode optimize(AstNode node) {
-        AstNode optimized = AstPassSupport.mapChildren(node, StrengthReduction::optimize);
-
-        if (!(optimized instanceof BinaryAstNode binary))
+   public static AstNode optimize(AstNode node) {
+      AstNode optimized = AstPassSupport.mapChildren(node, StrengthReduction::optimize);
+      if (optimized instanceof BinaryAstNode binary) {
+         if (binary.op() != BinaryAstNode.BinaryOp.MUL) {
             return optimized;
-
-        if (binary.op() != BinaryAstNode.BinaryOp.MUL)
-            return optimized;
-
-        if (isConstant(binary.left(), 2))
+         } else if (isConstant(binary.left(), 2.0)) {
             return addCached(binary.right());
+         } else {
+            return (AstNode)(isConstant(binary.right(), 2.0) ? addCached(binary.left()) : optimized);
+         }
+      } else {
+         return optimized;
+      }
+   }
 
-        if (isConstant(binary.right(), 2))
-            return addCached(binary.left());
+   private static BinaryAstNode addCached(AstNode node) {
+      CachedAstNode cached = new CachedAstNode(node);
+      return new BinaryAstNode(BinaryAstNode.BinaryOp.ADD, cached, cached);
+   }
 
-        return optimized;
-    }
-
-    private static BinaryAstNode addCached(AstNode node) {
-        CachedAstNode cached = new CachedAstNode(node);
-
-        return new BinaryAstNode(BinaryAstNode.BinaryOp.ADD, cached, cached);
-    }
-
-    private static boolean isConstant(AstNode node, double value) {
-        return node instanceof ConstantAstNode constant && constant.value() == value;
-    }
+   private static boolean isConstant(AstNode node, double value) {
+      return node instanceof ConstantAstNode constant && constant.value() == value;
+   }
 }

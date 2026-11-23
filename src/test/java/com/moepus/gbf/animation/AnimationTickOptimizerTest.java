@@ -1,8 +1,8 @@
 package com.moepus.gbf.animation;
 
 import org.junit.jupiter.api.Test;
+import software.bernie.geckolib.animation.state.BoneSnapshot;
 import software.bernie.geckolib.cache.object.GeoBone;
-import software.bernie.geckolib.core.state.BoneSnapshot;
 
 import java.util.List;
 import java.util.Map;

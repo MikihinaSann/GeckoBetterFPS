@@ -4,18 +4,18 @@ import org.objectweb.asm.Type;
 import org.objectweb.asm.commons.InstructionAdapter;
 
 public interface AstNode {
-    double eval();
+   double eval();
 
-    AstNode[] children();
+   AstNode[] children();
 
-    default AstNode transform(AstTransformer transformer) {
-        return transformer.transform(this);
-    }
+   default AstNode transform(AstTransformer transformer) {
+      return transformer.transform(this);
+   }
 
-    void emit(BytecodeGen.Context context, InstructionAdapter method);
+   void emit(BytecodeGen.Context var1, InstructionAdapter var2);
 
-    default void emitReturn(BytecodeGen.Context context, InstructionAdapter method) {
-        emit(context, method);
-        method.areturn(Type.DOUBLE_TYPE);
-    }
+   default void emitReturn(BytecodeGen.Context context, InstructionAdapter method) {
+      this.emit(context, method);
+      method.areturn(Type.DOUBLE_TYPE);
+   }
 }

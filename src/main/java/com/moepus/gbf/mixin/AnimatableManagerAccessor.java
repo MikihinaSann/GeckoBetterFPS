@@ -2,10 +2,16 @@ package com.moepus.gbf.mixin;
 
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Invoker;
-import software.bernie.geckolib.core.animation.AnimatableManager;
+import software.bernie.geckolib.animation.AnimatableManager;
 
-@Mixin(value = AnimatableManager.class, remap = false)
+@Mixin(
+   value = {AnimatableManager.class},
+   remap = false
+)
 public interface AnimatableManagerAccessor {
-    @Invoker(value = "finishFirstTick", remap = false)
-    void gbf$finishFirstTick();
+   @Invoker(
+      value = "finishFirstTick",
+      remap = false
+   )
+   void gbf$finishFirstTick();
 }

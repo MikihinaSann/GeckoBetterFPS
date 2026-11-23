@@ -1,8 +1,7 @@
 package com.moepus.gbf.molang.compiler;
 
-import com.eliotlash.mclib.math.IValue;
-
 import java.util.List;
+import software.bernie.geckolib.loading.math.MathValue;
 
-record CompiledAst(AstNode root, List<IValue> references) {
+record CompiledAst(AstNode root, List<MathValue> references) {
 }

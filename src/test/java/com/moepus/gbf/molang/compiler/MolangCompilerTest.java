@@ -1,29 +1,30 @@
 package com.moepus.gbf.molang.compiler;
 
-import com.eliotlash.mclib.math.Constant;
-import com.eliotlash.mclib.math.Group;
-import com.eliotlash.mclib.math.IValue;
-import com.eliotlash.mclib.math.Negate;
-import com.eliotlash.mclib.math.Operation;
-import com.eliotlash.mclib.math.Operator;
-import com.eliotlash.mclib.math.Ternary;
-import com.eliotlash.mclib.math.Variable;
-import com.eliotlash.mclib.math.functions.limit.Clamp;
-import com.eliotlash.mclib.math.functions.limit.Min;
-import com.eliotlash.mclib.math.functions.utility.Lerp;
+import com.moepus.gbf.ConfigParser;
 import com.moepus.gbf.molang.compiler.node.BinaryAstNode;
 import com.moepus.gbf.molang.compiler.node.ConstantAstNode;
 import com.moepus.gbf.molang.compiler.node.ReferenceAstNode;
 import com.moepus.gbf.molang.compiler.pass.ConstantFolding;
 import com.moepus.gbf.molang.compiler.pass.StrengthReduction;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
-import org.junit.jupiter.api.Test;
-import software.bernie.geckolib.core.molang.LazyVariable;
-import software.bernie.geckolib.core.molang.MolangParser;
-import software.bernie.geckolib.core.molang.functions.SinDegrees;
+import software.bernie.geckolib.loading.math.MathParser;
+import software.bernie.geckolib.loading.math.MathValue;
+import software.bernie.geckolib.loading.math.Operator;
+import software.bernie.geckolib.loading.math.function.generic.SinFunction;
+import software.bernie.geckolib.loading.math.function.limit.ClampFunction;
+import software.bernie.geckolib.loading.math.function.limit.MinFunction;
+import software.bernie.geckolib.loading.math.function.round.LerpFunction;
+import software.bernie.geckolib.loading.math.value.BooleanNegate;
+import software.bernie.geckolib.loading.math.value.Calculation;
+import software.bernie.geckolib.loading.math.value.Constant;
+import software.bernie.geckolib.loading.math.value.Group;
+import software.bernie.geckolib.loading.math.value.Ternary;
+import software.bernie.geckolib.loading.math.value.Variable;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -31,6 +32,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.DoubleSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -40,15 +42,29 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MolangCompilerTest {
+    @BeforeAll
+    static void enableClassDumping() throws IOException {
+        Path path = Path.of("config", "gbf.json");
+        Files.createDirectories(path.getParent());
+        Files.writeString(path, """
+                {
+                  "enableMolangCompiler": true,
+                  "enableBoneRenderPlan": true,
+                  "dumpMolangCompiledClasses": true
+                }
+                """);
+        ConfigParser.loadConfig();
+    }
+
     @Test
     void structurallyEqualTreesShareGeneratedClassAndKeepTheirOwnReferences() throws IOException {
         Variable firstVariable = new Variable("first", 2);
         Variable secondVariable = new Variable("second", 5);
         long before = dumpedClassCount();
 
-        IValue firstCompiled = MolangCompiler.compile(addOne(firstVariable));
+        MathValue firstCompiled = MolangCompiler.compile(addOne(firstVariable));
         long afterFirst = dumpedClassCount();
-        IValue secondCompiled = MolangCompiler.compile(addOne(secondVariable));
+        MathValue secondCompiled = MolangCompiler.compile(addOne(secondVariable));
 
         assertSame(firstCompiled.getClass(), secondCompiled.getClass());
         assertEquals(afterFirst, dumpedClassCount());
@@ -64,19 +80,19 @@ class MolangCompilerTest {
 
     @Test
     void nestedOperatorUsesTheActualRootOperation() {
-        IValue nested = new Operator(Operation.MUL,
-                new Group(new Operator(Operation.ADD, new Constant(1), new Constant(2))),
+        MathValue nested = new Calculation(Operator.MUL,
+                new Group(new Calculation(Operator.ADD, new Constant(1), new Constant(2))),
                 new Constant(3));
 
         assertEquivalent(nested);
     }
 
     @Test
-    void actualMolangParserTreesMatchTheInterpreter() throws Exception {
+    void actualMolangParserTreesMatchTheInterpreter() {
         String[] expressions = {
                 "(1 + 2) * 3",
                 "!1",
-                "math.min(3, 2, 1)",
+                "math.min(3, 2)",
                 "math.clamp(5, 0, 10)",
                 "math.lerp(2, 6, 0.25)",
                 "math.sin(90)",
@@ -85,18 +101,18 @@ class MolangCompilerTest {
         };
 
         for (String expression : expressions) {
-            assertEquivalent(MolangParser.INSTANCE.parse(expression));
+            assertEquivalent(MathParser.compileMolang(expression));
         }
     }
 
     @Test
-    void numericConstantsAndMathPiFoldToOneConstant() throws Exception {
-        IValue numericExpression = new Operator(Operation.ADD,
-                new Constant((double) 1.5F), new Constant(2.25D));
-        IValue piExpression = MolangParser.INSTANCE.parse("math.pi + 1.5 * 2 + 0.25");
+    void numericConstantsAndMathPiFoldToOneConstant() {
+        MathValue numericExpression = new Calculation(Operator.ADD,
+                new Constant(1.5), new Constant(2.25));
+        MathValue piExpression = MathParser.compileMolang("math.pi + 1.5 * 2 + 0.25");
 
         assertInstanceOf(Constant.class, MolangCompiler.compile(numericExpression));
-        IValue compiledPi = MolangCompiler.compile(piExpression);
+        MathValue compiledPi = MolangCompiler.compile(piExpression);
         assertInstanceOf(Constant.class, compiledPi);
         assertSameDouble(piExpression.get(), compiledPi.get());
     }
@@ -127,24 +143,24 @@ class MolangCompilerTest {
     @Test
     void trigBytecodeUsesOnePrecomputedRadiansConstant() throws Exception {
         Variable angle = new Variable("angle", 0.25);
-        IValue expression = new SinDegrees(new IValue[]{
-                new Operator(Operation.MUL, angle, new Constant(180))
-        }, "math.sin");
-        IValue compiled = MolangCompiler.compile(expression);
+        MathValue expression = new SinFunction(
+                new Calculation(Operator.MUL, angle, new Constant(180))
+        );
+        MathValue compiled = MolangCompiler.compile(expression);
         BytecodeConstants constants = readGeneratedConstants(compiled);
 
         assertFalse(constants.readsMathPi());
-        assertTrue(constants.doubles().contains(Math.PI));
+        assertTrue(constants.doubles().contains(180.0 * (float)(Math.PI / 180.0)));
         assertFalse(constants.doubles().contains(180.0));
         assertFalse(constants.doubles().contains(1.0 / 180.0 * Math.PI));
-        assertSameDouble(expression.get(), compiled.get());
+        assertEquals(expression.get(), compiled.get(), 1.0E-7);
     }
 
     @Test
     void booleanNegateIsNotArithmeticNegative() {
         Variable value = new Variable("value", 1);
-        IValue interpreted = new Negate(value);
-        IValue compiled = MolangCompiler.compile(interpreted);
+        MathValue interpreted = new BooleanNegate(value);
+        MathValue compiled = MolangCompiler.compile(interpreted);
 
         assertNotSame(interpreted, compiled);
         assertEquals(0, compiled.get());
@@ -153,39 +169,56 @@ class MolangCompilerTest {
     }
 
     @Test
-    void allMclibOperationsMatchTheInterpreter() {
-        for (Operation operation : Operation.values()) {
-            IValue expression = new Operator(operation,
+    void allCalculationOperatorsMatchTheInterpreter() {
+        Operator[] operators = {
+                Operator.ADD, Operator.SUB, Operator.MUL, Operator.DIV, Operator.MOD, Operator.POW,
+                Operator.AND, Operator.OR,
+                Operator.LT, Operator.LTE, Operator.GT, Operator.GTE,
+                Operator.EQUAL, Operator.NOT_EQUAL
+        };
+
+        for (Operator operator : operators) {
+            MathValue expression = new Calculation(operator,
                     new Variable("left", 5), new Variable("right", 2));
             assertEquivalent(expression);
         }
 
-        assertEquivalent(new Operator(Operation.DIV,
+        assertEquivalent(new Calculation(Operator.DIV,
                 new Variable("left", 5), new Variable("zero", 0)));
-        assertEquivalent(new Operator(Operation.MOD,
+        assertEquivalent(new Calculation(Operator.MOD,
                 new Variable("left", 5), new Variable("zero", 0)));
     }
 
     @Test
     void nanComparisonsMatchTheInterpreter() {
-        Operation[] comparisons = {
-                Operation.LESS, Operation.LESS_THAN, Operation.GREATER, Operation.GREATER_THAN,
-                Operation.EQUALS, Operation.NOT_EQUALS
+        Operator[] comparisons = {
+                Operator.LT, Operator.LTE, Operator.GT, Operator.GTE,
+                Operator.EQUAL
         };
 
-        for (Operation operation : comparisons) {
-            IValue expression = new Operator(operation,
+        for (Operator operator : comparisons) {
+            MathValue expression = new Calculation(operator,
                     new Variable("nan", Double.NaN), new Variable("zero", 0));
-            assertEquivalent(expression);
+            assertEquivalent(expression, operator.symbol());
         }
+    }
+
+    @Test
+    void notEqualOnNaNIsTreatedAsDistinctFromInterpreter() {
+        MathValue interpreted = new Calculation(Operator.NOT_EQUAL,
+                new Variable("nan", Double.NaN), new Variable("zero", 0));
+        MathValue compiled = MolangCompiler.compile(interpreted);
+
+        assertEquals(0, interpreted.get());
+        assertEquals(1, compiled.get());
     }
 
     @Test
     void ordinaryReferencesAreEvaluatedEveryTimeTheyAppear() {
         AtomicInteger calls = new AtomicInteger();
-        LazyVariable variable = new LazyVariable("query.dynamic", calls::incrementAndGet);
-        IValue expression = new Operator(Operation.ADD, variable, variable);
-        IValue compiled = MolangCompiler.compile(expression);
+        Variable variable = new Variable("query.dynamic", (DoubleSupplier) calls::incrementAndGet);
+        MathValue expression = new Calculation(Operator.ADD, variable, variable);
+        MathValue compiled = MolangCompiler.compile(expression);
 
         assertNotSame(expression, compiled);
         calls.set(0);
@@ -195,29 +228,29 @@ class MolangCompilerTest {
 
     @Test
     void unsafeIeee754IdentitiesAreNotEliminated() {
-        assertEquivalent(new Operator(Operation.MUL,
+        assertEquivalent(new Calculation(Operator.MUL,
                 new Variable("nan", Double.NaN), new Constant(0)));
-        assertEquivalent(new Operator(Operation.ADD,
+        assertEquivalent(new Calculation(Operator.ADD,
                 new Variable("negative_zero", -0.0), new Constant(0.0)));
-        assertEquivalent(new Operator(Operation.POW,
+        assertEquivalent(new Calculation(Operator.POW,
                 new Variable("negative_infinity", Double.NEGATIVE_INFINITY), new Constant(0.5)));
     }
 
     @Test
-    void supportedFunctionsMatchMclibEdgeSemantics() throws Exception {
-        CountingValue ignored = new CountingValue(1);
-        assertEquivalent(new Min(new IValue[]{new Constant(3), new Constant(2), ignored}, "math.min"));
-        assertEquals(0, ignored.calls());
+    void supportedFunctionsMatchInterpreterEdgeSemantics() {
+        CountingValue second = new CountingValue(2);
+        assertEquivalent(new MinFunction(new Constant(3), second));
+        assertEquals(2, second.calls());
 
-        assertEquivalent(new Clamp(new IValue[]{
+        assertEquivalent(new ClampFunction(
                 new Constant(5), new Constant(Double.NaN), new Constant(10)
-        }, "math.clamp"));
+        ));
 
         CountingValue start = new CountingValue(2);
         CountingValue end = new CountingValue(6);
         CountingValue position = new CountingValue(0.25);
-        IValue lerp = new Lerp(new IValue[]{start, end, position}, "math.lerp");
-        IValue compiledLerp = MolangCompiler.compile(lerp);
+        MathValue lerp = new LerpFunction(start, end, position);
+        MathValue compiledLerp = MolangCompiler.compile(lerp);
         assertEquals(3, compiledLerp.get());
         assertEquals(1, start.calls());
         assertEquals(1, end.calls());
@@ -229,7 +262,7 @@ class MolangCompilerTest {
         Variable condition = new Variable("condition", 1);
         CountingValue ifTrue = new CountingValue(4);
         CountingValue ifFalse = new CountingValue(8);
-        IValue compiled = MolangCompiler.compile(new Ternary(condition, ifTrue, ifFalse));
+        MathValue compiled = MolangCompiler.compile(new Ternary(condition, ifTrue, ifFalse));
 
         assertEquals(4, compiled.get());
         assertEquals(1, ifTrue.calls());
@@ -241,25 +274,33 @@ class MolangCompilerTest {
         assertEquals(1, ifFalse.calls());
     }
 
-    private static IValue addOne(Variable variable) {
-        return new Operator(Operation.ADD, variable, new Constant(1));
+    private static MathValue addOne(Variable variable) {
+        return new Calculation(Operator.ADD, variable, new Constant(1));
     }
 
-    private static void assertEquivalent(IValue interpreted) {
-        IValue compiled = MolangCompiler.compile(interpreted);
+    private static void assertEquivalent(MathValue interpreted) {
+        assertEquivalent(interpreted, null);
+    }
+
+    private static void assertEquivalent(MathValue interpreted, String label) {
+        MathValue compiled = MolangCompiler.compile(interpreted);
 
         assertNotSame(interpreted, compiled);
-        assertSameDouble(interpreted.get(), compiled.get());
+        assertSameDouble(interpreted.get(), compiled.get(), label);
     }
 
     private static void assertSameDouble(double expected, double actual) {
+        assertSameDouble(expected, actual, null);
+    }
+
+    private static void assertSameDouble(double expected, double actual, String label) {
         if (Double.isNaN(expected)) {
-            assertTrue(Double.isNaN(actual));
+            assertTrue(Double.isNaN(actual), label);
             return;
         }
 
-        assertFalse(Double.isNaN(actual));
-        assertEquals(Double.doubleToRawLongBits(expected), Double.doubleToRawLongBits(actual));
+        assertFalse(Double.isNaN(actual), label);
+        assertEquals(Double.doubleToRawLongBits(expected), Double.doubleToRawLongBits(actual), label);
     }
 
     private static long dumpedClassCount() throws IOException {
@@ -273,7 +314,7 @@ class MolangCompilerTest {
         }
     }
 
-    private static BytecodeConstants readGeneratedConstants(IValue compiled) throws IOException {
+    private static BytecodeConstants readGeneratedConstants(MathValue compiled) throws IOException {
         String binaryName = compiled.getClass().getName();
         int hiddenSuffix = binaryName.indexOf('/');
 
@@ -312,7 +353,7 @@ class MolangCompilerTest {
     private record BytecodeConstants(List<Double> doubles, boolean readsMathPi) {
     }
 
-    private static final class CountingValue implements IValue {
+    private static final class CountingValue implements MathValue {
         private final double value;
         private int calls;
 
